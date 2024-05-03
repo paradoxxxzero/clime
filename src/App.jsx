@@ -37,23 +37,20 @@ const load = async url => {
 }
 
 const cache = new Map()
-
-async function preload() {
+const start = -15
+async function preload(setLastFrame) {
   for (
-    let t = roundDate(new Date()).getTime() - 15 * 60 * 1000;
+    let t = roundDate(new Date()).getTime() + start * 60 * 1000;
     t > new Date().getTime() - 24 * 60 * 60 * 1000;
     t -= 5 * 60 * 1000
   ) {
     const frame = format(new Date(t))
     cache.set(frame, await load(url(frame)))
+    setLastFrame(frame)
   }
 }
 
 const draw = (time, canvas, zoom = 1) => {
-  if (canvas.width !== innerWidth || canvas.height !== innerHeight) {
-    canvas.width = innerWidth
-    canvas.height = innerHeight
-  }
   const ctx = canvas.getContext('2d')
   const prevDate = roundDate(new Date(time))
   const nextDate = roundDate(new Date(time + 5 * 60 * 1000))
@@ -75,46 +72,31 @@ const draw = (time, canvas, zoom = 1) => {
     if (alpha === 0 || !img) {
       return
     }
-    // Draw image centered scaled on height and clipped horizontally and finally zoomed by zoom
-    const scale = innerHeight / img.height
-    const width = img.width * scale
-    const x = (canvas.width - width) / 2
-    // ctx.drawImage(img, 0, 0, img.width, img.height, x, 0, width, canvas.height)
+
+    const horizontal = innerWidth / innerHeight < img.width / img.height
+    const scale =
+      zoom * (!horizontal ? innerWidth / img.width : innerHeight / img.height)
+
+    const dx = (canvas.width - img.width * scale) / 2
+    const dy = (canvas.height - img.height * scale) / 2
+
     ctx.globalAlpha = alpha
-
-    const shift = (canvas.height - img.height * zoom) / 2
-    console.log(
-      0 + shift,
-      0 + shift,
-      img.width - shift * 2,
-      img.height - shift * 2,
-      x,
-      0,
-      width,
-      canvas.height
-    )
-    ctx.drawImage(
-      img,
-      0 + shift,
-      0 + shift,
-      img.width - shift * 2,
-      img.height - shift * 2,
-      x,
-      0,
-      width,
-      canvas.height
-    )
+    ctx.drawImage(img, dx, dy, img.width * scale, img.height * scale)
   }
-
   render(prevImg, 1)
   render(nextImg, 1 - ratio)
 }
 
-preload()
-
 export default function App() {
-  const [time, setTime] = useState(() => new Date().getTime() - 15 * 60 * 1000)
-  const [zoom, setZoom] = useState(1)
+  const [time, setTime] = useState(
+    () => new Date().getTime() + start * 60 * 1000
+  )
+  const [zoom, setZoom] = useState(devicePixelRatio)
+  const [lastFrame, setLastFrame] = useState(null)
+
+  useEffect(() => {
+    preload(setLastFrame)
+  }, [])
 
   const canvasRef = useRef()
 
@@ -159,12 +141,16 @@ export default function App() {
 
   useEffect(() => {
     const canvas = canvasRef.current
-    const redraw = () => draw(time, canvas, zoom)
-    redraw()
+    const observer = new ResizeObserver(entries => {
+      const entry = entries.find(entry => entry.target === canvas)
+      canvas.width = entry.devicePixelContentBoxSize[0].inlineSize
+      canvas.height = entry.devicePixelContentBoxSize[0].blockSize
 
-    window.addEventListener('resize', redraw)
-    return () => window.removeEventListener('resize', redraw)
-  }, [time, zoom])
+      draw(time, canvas, zoom)
+    })
+    observer.observe(canvas, { box: ['device-pixel-content-box'] })
+    return () => observer.disconnect()
+  }, [time, zoom, lastFrame])
 
   return (
     <main>
