@@ -101,24 +101,58 @@ export default function App() {
   const canvasRef = useRef()
 
   useEffect(() => {
-    let cursor
+    const pointers = new Map()
+    // let pinch = null
+    let distance = null
     const down = e => {
       document.body.style.cursor = 'grabbing'
-      cursor = { x: e.clientX, y: e.clientY }
+      if (e.button !== 0) {
+        return
+      }
+
+      pointers.set(e.pointerId, [e.clientX, e.clientY])
       e.preventDefault()
     }
 
     const move = e => {
-      if (cursor) {
-        const x = cursor.x - e.clientX
-        const y = cursor.y - e.clientY
-        cursor = { x: e.clientX, y: e.clientY }
-        setTime(time => time - x * 6000)
+      if (!pointers.has(e.pointerId)) {
+        return
       }
+      const cursor = pointers.get(e.pointerId)
+
+      const x = cursor[0] - e.clientX
+      const y = cursor[1] - e.clientY
+      pointers.set(e.pointerId, [e.clientX, e.clientY])
+
+      if (pointers.size > 1) {
+        const vals = pointers.values()
+        const p1 = vals.next().value
+        const p2 = vals.next().value
+        // if (pinch === null) {
+        //   pinch = [
+        //     (p1[0] + p2[0]) / (2 * window.innerWidth),
+        //     (p1[1] + p2[1]) / (2 * window.innerHeight),
+        //   ]
+        // }
+
+        const newDistance = Math.hypot(p1[0] - p2[0], p1[1] - p2[1])
+        if (distance === null) {
+          distance = newDistance
+          return
+        }
+
+        const deltaDistance = (newDistance - distance) / window.innerWidth
+        distance = newDistance
+        setZoom(zoom => zoom * (1 + deltaDistance * 2))
+        return
+      }
+      setTime(time => time - x * 6000)
     }
     const up = () => {
       document.body.style.cursor = 'default'
-      cursor = null
+      pointers.clear()
+      distance = null
+      // pinch = null
     }
 
     window.addEventListener('pointerdown', down)
@@ -133,7 +167,7 @@ export default function App() {
 
   useEffect(() => {
     const wheel = e => {
-      setZoom(zoom => zoom + e.deltaY / innerHeight)
+      setZoom(zoom => Math.pow(1.1, -e.deltaY / 100) * zoom)
     }
     window.addEventListener('wheel', wheel)
     return () => window.removeEventListener('wheel', wheel)
