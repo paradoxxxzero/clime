@@ -1,3 +1,5 @@
+import { latlngs } from './main'
+
 export const getInfos = async () => {
   const res = await fetch('https://imn-api.meteoplaza.com/v4/nowcast/tiles/')
   const data = await res.json()
@@ -70,7 +72,7 @@ export const group = (array, size) => {
 const getPrevNextRatio = (keys, time) => {
   keys = keys.sort()
   let index
-  if (time < keys[0]) {
+  if (time <= keys[0]) {
     index = 1
   } else if (time > keys[keys.length - 1]) {
     index = keys.length - 1
@@ -90,13 +92,21 @@ const getPrevNextRatio = (keys, time) => {
   return { prevTime, nextTime, ratio }
 }
 
+const bounds = {
+  east: 14.44,
+  north: 52.63,
+  south: 39.25,
+  west: -11.4,
+}
+
 export const draw = (
   cache,
   time,
   canvas,
-  zoom = 1,
-  intrapolate = true,
-  rainAlpha = 50
+  center,
+  zoom,
+  intrapolate,
+  rainAlpha
 ) => {
   const ctx = canvas.getContext('2d')
 
@@ -110,37 +120,70 @@ export const draw = (
     time
   )
 
-  ctx.clearRect(0, 0, canvas.width, canvas.height)
-  const render = (img, alpha) => {
-    if (alpha === 0 || !img) {
-      return
-    }
+  const img = cache.cloud.get(cloud.prevTime)
 
-    const horizontal = innerWidth / innerHeight < img.width / img.height
-    const scale =
-      zoom * (!horizontal ? innerWidth / img.width : innerHeight / img.height)
+  ctx.globalAlpha = 1
 
-    const dx = (canvas.width - img.width * scale) / 2
-    const dy = (canvas.height - img.height * scale) / 2
+  const aspect = innerWidth / innerHeight
 
-    ctx.globalAlpha = alpha
-    ctx.drawImage(img, dx, dy, img.width * scale, img.height * scale)
-  }
-  render(cache.cloud.get(cloud.prevTime), 1)
+  let width = (img.width / canvas.width) * 2 * zoom * aspect
+  let height = (img.height / canvas.height) * 2 * zoom
+  let x = center[0] - width / 2 + canvas.width / 2
+  let y = center[1] - height / 2 + canvas.height / 2
+
+  img && ctx.drawImage(img, x, y, width, height)
+
   if (intrapolate) {
-    render(cache.cloud.get(cloud.nextTime), 1 - cloud.ratio)
+    ctx.globalAlpha = 1 - cloud.ratio
+    const nextImg = cache.cloud.get(cloud.nextTime)
+    if (nextImg) {
+      ctx.drawImage(nextImg, x, y, width, height)
+    }
   }
   if (!rainAlpha) {
     return
   }
-  render(
-    cache.rain.get(rain.prevTime) || cache.forecast.get(rain.prevTime),
-    (rainAlpha / 100) * (intrapolate ? rain.ratio : 1)
-  )
-  if (intrapolate) {
-    render(
-      cache.rain.get(rain.nextTime) || cache.forecast.get(rain.nextTime),
-      (rainAlpha / 100) * (1 - rain.ratio)
-    )
+  ctx.globalAlpha = (rainAlpha / 100) * (intrapolate ? rain.ratio : 1)
+  const rainImg =
+    cache.rain.get(rain.prevTime) || cache.forecast.get(rain.prevTime)
+  if (rainImg) {
+    ctx.drawImage(rainImg, x, y, width, height)
   }
+  if (intrapolate) {
+    const nextRainImg =
+      cache.rain.get(rain.nextTime) || cache.forecast.get(rain.nextTime)
+    ctx.globalAlpha = (rainAlpha / 100) * (1 - rain.ratio)
+    if (nextRainImg) {
+      ctx.drawImage(nextRainImg, x, y, width, height)
+    }
+  }
+
+  latlngs.forEach(([lat, lng], i) => {
+    let cx = (lng - bounds.west) / (bounds.east - bounds.west)
+    let cy = (bounds.north - lat) / (bounds.north - bounds.south)
+    cx = cx * width + x
+    cy = cy * height + y
+    ctx.globalAlpha = 0.5
+    // Draw crosshair
+    ctx.fillStyle = ctx.strokeStyle = `hsl(${
+      (i * 360) / latlngs.length
+    }, 80%, 35%)`
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.moveTo(cx - 10, cy)
+    ctx.lineTo(cx - 5, cy)
+    ctx.moveTo(cx + 5, cy)
+    ctx.lineTo(cx + 10, cy)
+    ctx.moveTo(cx, cy - 10)
+    ctx.lineTo(cx, cy - 5)
+    ctx.moveTo(cx, cy + 5)
+    ctx.lineTo(cx, cy + 10)
+    ctx.stroke()
+
+    // Draw circle
+    ctx.beginPath()
+    ctx.arc(cx, cy, 5, 0, 2 * Math.PI)
+    ctx.stroke()
+    ctx.fillRect(cx - 0.5, cy - 0.5, 1, 1)
+  })
 }

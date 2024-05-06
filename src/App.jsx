@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import './App.css'
 import {
   cloudFormat,
@@ -11,8 +11,7 @@ import {
   rainFormat,
   rainUrl,
 } from './utils'
-
-const prevHours = location.search.match(/prev=(\d+)/)?.[1] || 5
+import { hours } from './main'
 
 export default function App() {
   const cache = useRef({
@@ -26,8 +25,10 @@ export default function App() {
 
   const [infos, setInfos] = useState({})
   const [time, setTime] = useState(() => new Date().getTime())
-  const [zoom, setZoom] = useState(devicePixelRatio)
+  const [center, setCenter] = useState([0, 0])
+  const [zoom, setZoom] = useState(innerHeight / 2)
   const [loading, setLoading] = useState(0)
+  const [scrollTime, setScrollTime] = useState(true)
   const [intrapolate, setIntrapolate] = useState(true)
   const [rainAlpha, setRainAlpha] = useState(50)
 
@@ -84,7 +85,7 @@ export default function App() {
         return
       }
       let time = keys[0]
-      while (time > new Date().getTime() - prevHours * 60 * 60 * 1000) {
+      while (time > new Date().getTime() - hours * 60 * 60 * 1000) {
         time -= 5 * 60 * 1000
         setLoading(loading => loading + 1)
         if (!cache.current.cloud.has(time)) {
@@ -121,7 +122,7 @@ export default function App() {
         const runtime = infos['radar-world'].runtimes[0] * 1000
         time = keys[0]
 
-        while (time > new Date().getTime() - prevHours * 60 * 60 * 1000) {
+        while (time > new Date().getTime() - hours * 60 * 60 * 1000) {
           time -= 5 * 60 * 1000
           if (!cache.current.rain.has(time)) {
             setLoading(loading => loading + 1)
@@ -148,7 +149,7 @@ export default function App() {
       }
       time = keys[0]
 
-      while (time > new Date().getTime() - prevHours * 60 * 60 * 1000) {
+      while (time > new Date().getTime() - hours * 60 * 60 * 1000) {
         time -= 5 * 60 * 1000
         if (!cache.current.rain.has(time)) {
           setLoading(loading => loading + 1)
@@ -179,7 +180,15 @@ export default function App() {
               cache.current[type].set(key, await load(url))
               if (Math.abs(time - key) < 5 * 60 * 1000) {
                 const canvas = canvasRef.current
-                draw(cache.current, time, canvas, zoom)
+                draw(
+                  cache.current,
+                  time,
+                  canvas,
+                  center,
+                  zoom,
+                  intrapolate,
+                  rainAlpha
+                )
               }
             } finally {
               setLoading(loading => loading - 1)
@@ -195,6 +204,26 @@ export default function App() {
       loadall()
     }
   }, [infos])
+
+  const shift = useCallback(
+    (dx, dy) => {
+      const aspect = innerWidth / innerHeight
+      const width = 2 * zoom
+      setCenter(([cx, cy]) => [cx - dx * aspect * width, cy - dy * width])
+    },
+    [zoom]
+  )
+
+  const rescale = useCallback(
+    (delta, x, y) => {
+      const dx = 0.5 - x
+      const dy = 0.5 - y
+      shift(dx * delta, dy * delta)
+
+      setZoom(zoom => zoom - zoom * delta)
+    },
+    [shift]
+  )
 
   useEffect(() => {
     const pointers = new Map()
@@ -242,9 +271,15 @@ export default function App() {
         setZoom(zoom => zoom * (1 + deltaDistance * 2))
         return
       }
-      if (bounds.current) {
-        const [min, max] = bounds.current
-        setTime(time => Math.min(max, Math.max(min, time - x * 10000)))
+      if (scrollTime) {
+        if (bounds.current) {
+          const [min, max] = bounds.current
+          setTime(time => Math.min(max, Math.max(min, time - x * 15 * 1000)))
+        }
+      } else {
+        const dx = x / window.innerWidth
+        const dy = y / window.innerHeight
+        shift(dx, dy)
       }
     }
     const up = () => {
@@ -262,11 +297,15 @@ export default function App() {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
     }
-  }, [])
+  }, [scrollTime])
 
   useEffect(() => {
     const wheel = e => {
-      setZoom(zoom => Math.pow(1.1, -e.deltaY / 100) * zoom)
+      const delta = e.deltaY / window.innerWidth
+      const x = e.clientX / window.innerWidth
+      const y = e.clientY / window.innerHeight
+
+      rescale(delta, x, y)
     }
     window.addEventListener('wheel', wheel)
     return () => window.removeEventListener('wheel', wheel)
@@ -279,23 +318,26 @@ export default function App() {
       canvas.width = entry.devicePixelContentBoxSize[0].inlineSize
       canvas.height = entry.devicePixelContentBoxSize[0].blockSize
 
-      draw(cache.current, time, canvas, zoom, intrapolate, rainAlpha)
+      draw(cache.current, time, canvas, center, zoom, intrapolate, rainAlpha)
     })
     observer.observe(canvas, { box: ['device-pixel-content-box'] })
     return () => observer.disconnect()
-  }, [time, zoom, intrapolate, rainAlpha])
+  }, [time, zoom, intrapolate, rainAlpha, center])
 
   return (
     <main>
       <canvas className="img" ref={canvasRef} />
       <aside>
         <div className="control">
+          <button className="button" onClick={() => setScrollTime(s => !s)}>
+            {scrollTime ? 'T' : 'X'}
+          </button>
           <button className="button" onClick={() => setIntrapolate(i => !i)}>
-            {intrapolate ? 'N' : 'I'}
+            {intrapolate ? 'I' : 'P'}
           </button>
           <button
             className="button"
-            onClick={() => setRainAlpha(a => (a + 10) % 100)}
+            onClick={() => setRainAlpha(a => (a + 10) % 110)}
           >
             R:{rainAlpha}%
           </button>
