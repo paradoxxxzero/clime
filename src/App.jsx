@@ -22,6 +22,7 @@ export default function App() {
   const canvasRef = useRef()
   const locks = useRef({})
   const bounds = useRef()
+  const speed = useRef([0, 0, 0])
 
   const [infos, setInfos] = useState({})
   const [time, setTime] = useState(() => new Date().getTime())
@@ -245,7 +246,7 @@ export default function App() {
         return
       }
 
-      pointers.set(e.pointerId, [e.clientX, e.clientY])
+      pointers.set(e.pointerId, [e.clientX, e.clientY, performance.now()])
       e.preventDefault()
     }
 
@@ -257,7 +258,13 @@ export default function App() {
 
       const x = (cursor[0] - e.clientX) * devicePixelRatio
       const y = (cursor[1] - e.clientY) * devicePixelRatio
-      pointers.set(e.pointerId, [e.clientX, e.clientY])
+      const t = performance.now()
+      speed.current = [
+        (speed.current[0] + (1000 * x) / t) / 2,
+        (speed.current[1] + (1000 * y) / t) / 2,
+        t,
+      ]
+      pointers.set(e.pointerId, [e.clientX, e.clientY, t])
 
       if (pointers.size > 1) {
         const vals = pointers.values()
@@ -306,6 +313,36 @@ export default function App() {
       window.removeEventListener('pointerup', up)
     }
   }, [scrollTime, rescale])
+
+  useEffect(() => {
+    const animate = () => {
+      const now = performance.now()
+      const dt = now - (speed.current[2] || now)
+      speed.current[2] = now
+      const [x, y] = speed.current
+      if (Math.abs(x) < 0.001 && Math.abs(y) < 0.001) {
+        return
+      }
+      speed.current[0] *= 0.98
+      speed.current[1] *= 0.98
+      if (scrollTime) {
+        if (bounds.current) {
+          const [min, max] = bounds.current
+          setTime(time =>
+            Math.min(max, Math.max(min, time - x * dt * 15 * 1000))
+          )
+        }
+      } else {
+        setMap(({ center, zoom }) => ({
+          zoom,
+          center: [center[0] - x * dt, center[1] - y * dt],
+        }))
+      }
+      id = requestAnimationFrame(animate)
+    }
+    let id = requestAnimationFrame(animate)
+    return () => cancelAnimationFrame(id)
+  }, [scrollTime, time, map])
 
   useEffect(() => {
     const wheel = e => {
