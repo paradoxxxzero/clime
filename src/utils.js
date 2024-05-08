@@ -103,8 +103,7 @@ export const draw = (
   cache,
   time,
   canvas,
-  center,
-  zoom,
+  { center, zoom },
   intrapolate,
   rainAlpha
 ) => {

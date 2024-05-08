@@ -25,8 +25,7 @@ export default function App() {
 
   const [infos, setInfos] = useState({})
   const [time, setTime] = useState(() => new Date().getTime())
-  const [center, setCenter] = useState([0, 0])
-  const [zoom, setZoom] = useState(innerHeight / 2)
+  const [map, setMap] = useState({ center: [0, 0], zoom: innerHeight / 2 })
   const [loading, setLoading] = useState(0)
   const [scrollTime, setScrollTime] = useState(true)
   const [intrapolate, setIntrapolate] = useState(true)
@@ -34,6 +33,7 @@ export default function App() {
 
   useEffect(() => {
     async function fetchInfos() {
+      console.log('Fetching')
       const data = await getInfos()
       setInfos(data)
       const ts = data['satellite-europe']?.layers
@@ -46,13 +46,24 @@ export default function App() {
       bounds.current = [min, max]
       setTime(time => Math.min(max, Math.max(min, time)))
     }
-    fetchInfos()
-  }, [])
+    let timeout = null
+    if (!loading) {
+      if (!Object.keys(infos).length) {
+        fetchInfos()
+      } else {
+        timeout = setTimeout(() => fetchInfos(), 30000)
+      }
+    }
+    return () => {
+      if (timeout) {
+        clearTimeout(timeout)
+      }
+    }
+  }, [loading])
 
   useEffect(() => {
     // Cloud images
     const toload = []
-    console.log(infos)
     infos['satellite-europe']?.layers?.forEach(({ layername, timestamp }) => {
       if (!cache.current.cloud.has(timestamp)) {
         toload.push({
@@ -73,10 +84,6 @@ export default function App() {
         })
       }
     })
-
-    toload.sort(
-      (a, b) => Math.abs(time - a.timestamp) - Math.abs(time - b.timestamp)
-    )
 
     async function rewindCloud() {
       if (locks.current.rewindCloud) {
@@ -181,18 +188,12 @@ export default function App() {
           batch.map(async ({ type, key, url }) => {
             try {
               cache.current[type].set(key, await load(url))
-              if (Math.abs(time - key) < 5 * 60 * 1000) {
-                const canvas = canvasRef.current
-                draw(
-                  cache.current,
-                  time,
-                  canvas,
-                  center,
-                  zoom,
-                  intrapolate,
-                  rainAlpha
-                )
-              }
+              setTime(time => {
+                if (Math.abs(time - key) < 5 * 60 * 1000) {
+                  return key
+                }
+                return time
+              })
             } finally {
               setLoading(loading => loading - 1)
             }
@@ -203,14 +204,40 @@ export default function App() {
       rewindCloud()
       rewindRain()
     }
-    if (toload.length > 0) {
-      loadall()
-    }
+
+    setTime(time => {
+      toload.sort(
+        (a, b) => Math.abs(time - a.timestamp) - Math.abs(time - b.timestamp)
+      )
+
+      if (toload.length > 0) {
+        loadall()
+      }
+      return time
+    })
   }, [infos])
+
+  const rescale = useCallback((delta, x, y) => {
+    setMap(({ center, zoom }) => {
+      const aspect = innerWidth / innerHeight
+
+      const dx = -(x - innerWidth / 2 - center[0]) / (2 * zoom * aspect)
+      const dy = -(y - innerHeight / 2 - center[1]) / (2 * zoom)
+
+      // Increase half size by delta percent
+      return {
+        zoom: zoom * (1 - delta),
+        center: [
+          center[0] - dx * zoom * delta * 2 * aspect,
+          center[1] - dy * zoom * delta * 2,
+        ],
+      }
+    })
+  }, [])
 
   useEffect(() => {
     const pointers = new Map()
-    // let pinch = null
+    let pinch = null
     let distance = null
     const down = e => {
       document.body.style.cursor = 'grabbing'
@@ -236,12 +263,9 @@ export default function App() {
         const vals = pointers.values()
         const p1 = vals.next().value
         const p2 = vals.next().value
-        // if (pinch === null) {
-        //   pinch = [
-        //     (p1[0] + p2[0]) / (2 * window.innerWidth),
-        //     (p1[1] + p2[1]) / (2 * window.innerHeight),
-        //   ]
-        // }
+        if (pinch === null) {
+          pinch = [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2]
+        }
 
         const newDistance = Math.hypot(p1[0] - p2[0], p1[1] - p2[1])
         if (distance === null) {
@@ -249,9 +273,9 @@ export default function App() {
           return
         }
 
-        const deltaDistance = (newDistance - distance) / window.innerWidth
+        const deltaDistance = (newDistance - distance) / innerWidth
         distance = newDistance
-        setZoom(zoom => zoom * (1 + deltaDistance * 2))
+        rescale(-deltaDistance * 4, pinch[0], pinch[1])
         return
       }
       if (scrollTime) {
@@ -260,14 +284,17 @@ export default function App() {
           setTime(time => Math.min(max, Math.max(min, time - x * 15 * 1000)))
         }
       } else {
-        setCenter(([cx, cy]) => [cx - x, cy - y])
+        setMap(({ center, zoom }) => ({
+          zoom,
+          center: [center[0] - x, center[1] - y],
+        }))
       }
     }
     const up = () => {
       document.body.style.cursor = 'default'
       pointers.clear()
       distance = null
-      // pinch = null
+      pinch = null
     }
 
     window.addEventListener('pointerdown', down)
@@ -278,28 +305,16 @@ export default function App() {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
     }
-  }, [scrollTime])
+  }, [scrollTime, rescale])
 
   useEffect(() => {
     const wheel = e => {
-      const aspect = innerWidth / innerHeight
       const delta = e.deltaY / innerWidth
-
-      const dx = -(e.clientX - innerWidth / 2 - center[0]) / (2 * zoom * aspect)
-      const dy = -(e.clientY - innerHeight / 2 - center[1]) / (2 * zoom)
-      const newZoom = zoom * (1 - delta)
-
-      // Increase half size by delta percent
-      setZoom(newZoom)
-
-      setCenter(([cx, cy]) => [
-        cx - dx * zoom * delta * 2 * aspect,
-        cy - dy * zoom * delta * 2,
-      ])
+      rescale(delta, e.clientX, e.clientY)
     }
     window.addEventListener('wheel', wheel)
     return () => window.removeEventListener('wheel', wheel)
-  }, [zoom])
+  }, [rescale])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -308,11 +323,11 @@ export default function App() {
       canvas.width = entry.devicePixelContentBoxSize[0].inlineSize
       canvas.height = entry.devicePixelContentBoxSize[0].blockSize
 
-      draw(cache.current, time, canvas, center, zoom, intrapolate, rainAlpha)
+      draw(cache.current, time, canvas, map, intrapolate, rainAlpha)
     })
     observer.observe(canvas, { box: ['device-pixel-content-box'] })
     return () => observer.disconnect()
-  }, [time, zoom, intrapolate, rainAlpha, center])
+  }, [time, map, intrapolate, rainAlpha])
 
   return (
     <main>
