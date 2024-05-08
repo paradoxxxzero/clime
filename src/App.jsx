@@ -73,7 +73,10 @@ export default function App() {
         })
       }
     })
-    toload.sort((a, b) => b.timestamp - a.timestamp)
+
+    toload.sort(
+      (a, b) => Math.abs(time - a.timestamp) - Math.abs(time - b.timestamp)
+    )
 
     async function rewindCloud() {
       if (locks.current.rewindCloud) {
@@ -205,26 +208,6 @@ export default function App() {
     }
   }, [infos])
 
-  const shift = useCallback(
-    (dx, dy) => {
-      const aspect = innerWidth / innerHeight
-      const width = 2 * zoom
-      setCenter(([cx, cy]) => [cx - dx * aspect * width, cy - dy * width])
-    },
-    [zoom]
-  )
-
-  const rescale = useCallback(
-    (delta, x, y) => {
-      const dx = 0.5 - x
-      const dy = 0.5 - y
-      shift(dx * delta, dy * delta)
-
-      setZoom(zoom => zoom - zoom * delta)
-    },
-    [shift]
-  )
-
   useEffect(() => {
     const pointers = new Map()
     // let pinch = null
@@ -277,9 +260,7 @@ export default function App() {
           setTime(time => Math.min(max, Math.max(min, time - x * 15 * 1000)))
         }
       } else {
-        const dx = x / window.innerWidth
-        const dy = y / window.innerHeight
-        shift(dx, dy)
+        setCenter(([cx, cy]) => [cx - x, cy - y])
       }
     }
     const up = () => {
@@ -301,15 +282,24 @@ export default function App() {
 
   useEffect(() => {
     const wheel = e => {
-      const delta = e.deltaY / window.innerWidth
-      const x = e.clientX / window.innerWidth
-      const y = e.clientY / window.innerHeight
+      const aspect = innerWidth / innerHeight
+      const delta = e.deltaY / innerWidth
 
-      rescale(delta, x, y)
+      const dx = -(e.clientX - innerWidth / 2 - center[0]) / (2 * zoom * aspect)
+      const dy = -(e.clientY - innerHeight / 2 - center[1]) / (2 * zoom)
+      const newZoom = zoom * (1 - delta)
+
+      // Increase half size by delta percent
+      setZoom(newZoom)
+
+      setCenter(([cx, cy]) => [
+        cx - dx * zoom * delta * 2 * aspect,
+        cy - dy * zoom * delta * 2,
+      ])
     }
     window.addEventListener('wheel', wheel)
     return () => window.removeEventListener('wheel', wheel)
-  }, [])
+  }, [zoom])
 
   useEffect(() => {
     const canvas = canvasRef.current

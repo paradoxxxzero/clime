@@ -124,12 +124,20 @@ export const draw = (
 
   ctx.globalAlpha = 1
 
-  const aspect = innerWidth / innerHeight
+  const aspect = img.width / img.height
+  let x = center[0]
+  let y = center[1]
 
-  let width = (img.width / canvas.width) * 2 * zoom * aspect
-  let height = (img.height / canvas.height) * 2 * zoom
-  let x = center[0] - width / 2 + canvas.width / 2
-  let y = center[1] - height / 2 + canvas.height / 2
+  let width = 2 * zoom * aspect
+  let height = 2 * zoom
+
+  // Translate to center image at 0, 0
+  x -= width / 2
+  y -= height / 2
+
+  // Translate to center image at canvas center
+  x += canvas.width / 2
+  y += canvas.height / 2
 
   img && ctx.drawImage(img, x, y, width, height)
 
@@ -163,12 +171,12 @@ export const draw = (
     let cy = (bounds.north - lat) / (bounds.north - bounds.south)
     cx = cx * width + x
     cy = cy * height + y
-    ctx.globalAlpha = 0.5
+    ctx.globalAlpha = 0.6
     // Draw crosshair
     ctx.fillStyle = ctx.strokeStyle = `hsl(${
-      (i * 360) / latlngs.length
-    }, 80%, 35%)`
-    ctx.lineWidth = 2
+      (i * 360) / (latlngs.length + 1)
+    }, 100%, 40%)`
+    ctx.lineWidth = 2.5
     ctx.beginPath()
     ctx.moveTo(cx - 10, cy)
     ctx.lineTo(cx - 5, cy)
