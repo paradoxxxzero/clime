@@ -127,8 +127,8 @@ export const draw = (
   let x = center[0]
   let y = center[1]
 
-  let width = 2 * zoom * aspect
-  let height = 2 * zoom
+  let width = 2 * zoom * aspect * devicePixelRatio
+  let height = 2 * zoom * devicePixelRatio
 
   // Translate to center image at 0, 0
   x -= width / 2

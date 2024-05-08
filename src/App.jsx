@@ -255,8 +255,8 @@ export default function App() {
       }
       const cursor = pointers.get(e.pointerId)
 
-      const x = cursor[0] - e.clientX
-      const y = cursor[1] - e.clientY
+      const x = (cursor[0] - e.clientX) * devicePixelRatio
+      const y = (cursor[1] - e.clientY) * devicePixelRatio
       pointers.set(e.pointerId, [e.clientX, e.clientY])
 
       if (pointers.size > 1) {
@@ -275,7 +275,7 @@ export default function App() {
 
         const deltaDistance = (newDistance - distance) / innerWidth
         distance = newDistance
-        rescale(-deltaDistance * 4, pinch[0], pinch[1])
+        rescale((-deltaDistance * 4) / devicePixelRatio, pinch[0], pinch[1])
         return
       }
       if (scrollTime) {
