@@ -86,17 +86,19 @@ const getPrevNextRatio = (keys, time) => {
     time > nextTime
       ? 0
       : time < prevTime
-      ? 1
-      : (nextTime - time) / (nextTime - prevTime)
+        ? 1
+        : (nextTime - time) / (nextTime - prevTime)
 
   return { prevTime, nextTime, ratio }
 }
 
+const deg2rad = deg => deg * (Math.PI / 180)
+
 const bounds = {
-  east: 14.44,
-  north: 52.63,
-  south: 39.25,
-  west: -11.4,
+  east: 16.875,
+  north: 54.1624339680678,
+  south: 36.59788913307021,
+  west: -14.0625,
 }
 
 export const draw = (
@@ -164,12 +166,33 @@ export const draw = (
       ctx.drawImage(nextRainImg, x, y, width, height)
     }
   }
-
   latlngs.forEach(([lat, lng], i) => {
-    let cx = (lng - bounds.west) / (bounds.east - bounds.west)
-    let cy = (bounds.north - lat) / (bounds.north - bounds.south)
-    cx = cx * width + x
-    cy = cy * height + y
+    const cWest = x
+    const cNorth = y
+    const cEast = x + width
+    const cSouth = y + height
+    const lWest = deg2rad(bounds.west)
+    const pNorth = deg2rad(bounds.north)
+    const lEast = deg2rad(bounds.east)
+    const pSouth = deg2rad(bounds.south)
+
+    // Mercator projection
+    // x = R * (λ - λ0)
+    // y = R * ln(tan(π/4 + φ/2))
+
+    // xw - xe = R * (λw - λe)
+    // R = (xw - xe) / (λw - λe)
+    const R = (cEast - cWest) / (lEast - lWest)
+
+    const l0 = lWest - cWest / R
+    const cx = R * (deg2rad(lng) - l0)
+
+    const yNorth = R * Math.log(Math.tan(Math.PI / 4 + pNorth / 2))
+    const ySouth = R * Math.log(Math.tan(Math.PI / 4 + pSouth / 2))
+    const yLat = R * Math.log(Math.tan(Math.PI / 4 + deg2rad(lat) / 2))
+    const cy =
+      ((yNorth - yLat) / (yNorth - ySouth)) * (cSouth - cNorth) + cNorth
+
     ctx.globalAlpha = 0.6
     // Draw crosshair
     ctx.fillStyle = ctx.strokeStyle = `hsl(${

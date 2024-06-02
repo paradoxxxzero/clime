@@ -11,7 +11,7 @@ import {
   rainFormat,
   rainUrl,
 } from './utils'
-import { hours } from './main'
+import { hours, latlngs } from './main'
 
 export default function App() {
   const cache = useRef({
@@ -313,6 +313,24 @@ export default function App() {
       window.removeEventListener('pointerup', up)
     }
   }, [scrollTime, rescale])
+
+  useEffect(() => {
+    if (latlngs.length) {
+      return
+    }
+    const dbl = () => {
+      navigator.geolocation.getCurrentPosition(({ coords }) => {
+        latlngs.push([coords.latitude, coords.longitude])
+        const canvas = canvasRef.current
+        draw(cache.current, time, canvas, map, intrapolate, rainAlpha)
+      })
+    }
+
+    window.addEventListener('dblclick', dbl)
+    return () => {
+      window.removeEventListener('dblclick', dbl)
+    }
+  }, [time, map, intrapolate, rainAlpha])
 
   useEffect(() => {
     const animate = () => {
