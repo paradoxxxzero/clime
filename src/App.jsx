@@ -25,6 +25,7 @@ export default function App() {
   const speed = useRef([0, 0, 0])
 
   const [infos, setInfos] = useState({})
+  const [locationAsked, setLocationAsked] = useState(false)
   const [time, setTime] = useState(() => new Date().getTime())
   const [map, setMap] = useState({ center: [0, 0], zoom: innerHeight / 2 })
   const [loading, setLoading] = useState(0)
@@ -315,22 +316,33 @@ export default function App() {
   }, [scrollTime, rescale])
 
   useEffect(() => {
-    if (latlngs.length) {
+    if (locationAsked) {
       return
     }
-    const dbl = () => {
-      navigator.geolocation.getCurrentPosition(({ coords }) => {
-        latlngs.push([coords.latitude, coords.longitude])
-        const canvas = canvasRef.current
-        draw(cache.current, time, canvas, map, intrapolate, rainAlpha)
-      })
+    const click = () => {
+      setLocationAsked(true)
+      navigator.geolocation.getCurrentPosition(
+        ({ coords }) => {
+          latlngs.push([coords.latitude, coords.longitude])
+          const canvas = canvasRef.current
+          draw(cache.current, time, canvas, map, intrapolate, rainAlpha)
+        },
+        error => {
+          alert('Could not get your location, ' + error.message)
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 5000,
+          maximumAge: 5 * 60 * 1000,
+        }
+      )
     }
 
-    window.addEventListener('dblclick', dbl)
+    window.addEventListener('click', click)
     return () => {
-      window.removeEventListener('dblclick', dbl)
+      window.removeEventListener('click', click)
     }
-  }, [time, map, intrapolate, rainAlpha])
+  }, [time, map, intrapolate, rainAlpha, locationAsked])
 
   useEffect(() => {
     const animate = () => {

@@ -86,8 +86,8 @@ const getPrevNextRatio = (keys, time) => {
     time > nextTime
       ? 0
       : time < prevTime
-        ? 1
-        : (nextTime - time) / (nextTime - prevTime)
+      ? 1
+      : (nextTime - time) / (nextTime - prevTime)
 
   return { prevTime, nextTime, ratio }
 }
@@ -198,21 +198,22 @@ export const draw = (
     ctx.fillStyle = ctx.strokeStyle = `hsl(${
       (i * 360) / (latlngs.length + 1)
     }, 100%, 40%)`
-    ctx.lineWidth = 2.5
+    const base = 5 * window.devicePixelRatio
+    ctx.lineWidth = base / 2
     ctx.beginPath()
-    ctx.moveTo(cx - 10, cy)
-    ctx.lineTo(cx - 5, cy)
-    ctx.moveTo(cx + 5, cy)
-    ctx.lineTo(cx + 10, cy)
-    ctx.moveTo(cx, cy - 10)
-    ctx.lineTo(cx, cy - 5)
-    ctx.moveTo(cx, cy + 5)
-    ctx.lineTo(cx, cy + 10)
+    ctx.moveTo(cx - 2 * base, cy)
+    ctx.lineTo(cx - base, cy)
+    ctx.moveTo(cx + base, cy)
+    ctx.lineTo(cx + 2 * base, cy)
+    ctx.moveTo(cx, cy - 2 * base)
+    ctx.lineTo(cx, cy - base)
+    ctx.moveTo(cx, cy + base)
+    ctx.lineTo(cx, cy + 2 * base)
     ctx.stroke()
 
     // Draw circle
     ctx.beginPath()
-    ctx.arc(cx, cy, 5, 0, 2 * Math.PI)
+    ctx.arc(cx, cy, base, 0, 2 * Math.PI)
     ctx.stroke()
     ctx.fillRect(cx - 0.5, cy - 0.5, 1, 1)
   })
