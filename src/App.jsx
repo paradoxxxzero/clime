@@ -24,6 +24,7 @@ export default function App() {
   const bounds = useRef()
   const speed = useRef([0, 0, 0])
 
+  const [pastLimit, setPastLimit] = useState(hours)
   const [infos, setInfos] = useState({})
   const [locationAsked, setLocationAsked] = useState(false)
   const [time, setTime] = useState(() => null)
@@ -32,7 +33,6 @@ export default function App() {
   const [scrollTime, setScrollTime] = useState(true)
   const [intrapolate, setIntrapolate] = useState(true)
   const [rainAlpha, setRainAlpha] = useState(50)
-
   useEffect(() => {
     async function fetchInfos() {
       const data = await getInfos()
@@ -96,7 +96,7 @@ export default function App() {
         return
       }
       let time = keys[0]
-      while (time > new Date().getTime() - hours * 60 * 60 * 1000) {
+      while (time > new Date().getTime() - pastLimit * 60 * 60 * 1000) {
         time -= 5 * 60 * 1000
         setLoading(loading => loading + 1)
         if (!cache.current.cloud.has(time)) {
@@ -132,7 +132,7 @@ export default function App() {
         const runtime = infos['radar-world'].runtimes[0] * 1000
         time = keys[0]
 
-        while (time > new Date().getTime() - hours * 60 * 60 * 1000) {
+        while (time > new Date().getTime() - pastLimit * 60 * 60 * 1000) {
           time -= 5 * 60 * 1000
           if (!cache.current.rain.has(time)) {
             setLoading(loading => loading + 1)
@@ -159,7 +159,7 @@ export default function App() {
       }
       time = keys[0]
 
-      while (time > new Date().getTime() - hours * 60 * 60 * 1000) {
+      while (time > new Date().getTime() - pastLimit * 60 * 60 * 1000) {
         time -= 5 * 60 * 1000
         if (!cache.current.rain.has(time)) {
           setLoading(loading => loading + 1)
@@ -215,7 +215,7 @@ export default function App() {
       }
       return time
     })
-  }, [infos])
+  }, [infos, pastLimit])
 
   const rescale = useCallback((delta, x, y) => {
     setMap(({ center, zoom }) => {
@@ -402,6 +402,9 @@ export default function App() {
       <canvas className="img" ref={canvasRef} />
       <aside>
         <div className="control">
+          <button className="button" onClick={() => setPastLimit(h => h + 1)}>
+            «
+          </button>
           <button className="button" onClick={() => setScrollTime(s => !s)}>
             {scrollTime ? 'T' : 'X'}
           </button>
