@@ -26,7 +26,7 @@ export default function App() {
 
   const [infos, setInfos] = useState({})
   const [locationAsked, setLocationAsked] = useState(false)
-  const [time, setTime] = useState(() => new Date().getTime())
+  const [time, setTime] = useState(() => null)
   const [map, setMap] = useState({ center: [0, 0], zoom: innerHeight / 2 })
   const [loading, setLoading] = useState(0)
   const [scrollTime, setScrollTime] = useState(true)
@@ -35,7 +35,6 @@ export default function App() {
 
   useEffect(() => {
     async function fetchInfos() {
-      console.log('Fetching')
       const data = await getInfos()
       setInfos(data)
       const ts = data['satellite-europe']?.layers
@@ -46,7 +45,7 @@ export default function App() {
         .concat([...cache.current.cloud.keys()])
       const [min, max] = [Math.min(...ts), Math.max(...ts)]
       bounds.current = [min, max]
-      setTime(time => Math.min(max, Math.max(min, time)))
+      setTime(time => (time ? Math.min(max, Math.max(min, time)) : time))
     }
     let timeout = null
     if (!loading) {
@@ -123,7 +122,6 @@ export default function App() {
         return
       }
       locks.current.rewindRain = true
-
       let keys = [...cache.current.rain.keys()].sort()
       let time
       if (keys.length === 0) {
@@ -191,7 +189,7 @@ export default function App() {
             try {
               cache.current[type].set(key, await load(url))
               setTime(time => {
-                if (Math.abs(time - key) < 5 * 60 * 1000) {
+                if (!time || Math.abs(time - key) < 5 * 60 * 1000) {
                   return key
                 }
                 return time
@@ -323,6 +321,10 @@ export default function App() {
       setLocationAsked(true)
       navigator.geolocation.getCurrentPosition(
         ({ coords }) => {
+          localStorage.setItem(
+            'location',
+            JSON.stringify([coords.latitude, coords.longitude])
+          )
           latlngs.push([coords.latitude, coords.longitude])
           const canvas = canvasRef.current
           draw(cache.current, time, canvas, map, intrapolate, rainAlpha)
@@ -331,9 +333,7 @@ export default function App() {
           alert('Could not get your location, ' + error.message)
         },
         {
-          enableHighAccuracy: true,
-          timeout: 5000,
-          maximumAge: 5 * 60 * 1000,
+          maximumAge: 30 * 60 * 1000,
         }
       )
     }
@@ -359,7 +359,9 @@ export default function App() {
         if (bounds.current) {
           const [min, max] = bounds.current
           setTime(time =>
-            Math.min(max, Math.max(min, time - x * dt * 15 * 1000))
+            time
+              ? Math.min(max, Math.max(min, time - x * dt * 15 * 1000))
+              : time
           )
         }
       } else {
@@ -389,7 +391,6 @@ export default function App() {
       const entry = entries.find(entry => entry.target === canvas)
       canvas.width = entry.devicePixelContentBoxSize[0].inlineSize
       canvas.height = entry.devicePixelContentBoxSize[0].blockSize
-
       draw(cache.current, time, canvas, map, intrapolate, rainAlpha)
     })
     observer.observe(canvas, { box: ['device-pixel-content-box'] })

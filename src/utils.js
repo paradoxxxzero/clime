@@ -86,8 +86,8 @@ const getPrevNextRatio = (keys, time) => {
     time > nextTime
       ? 0
       : time < prevTime
-      ? 1
-      : (nextTime - time) / (nextTime - prevTime)
+        ? 1
+        : (nextTime - time) / (nextTime - prevTime)
 
   return { prevTime, nextTime, ratio }
 }
@@ -99,6 +99,18 @@ const bounds = {
   north: 54.1624339680678,
   south: 36.59788913307021,
   west: -14.0625,
+}
+
+const getLocalLatLng = () => {
+  try {
+    const latlng = JSON.parse(localStorage.getItem('location'))
+    if (latlng) {
+      return [[...latlng, true]]
+    }
+  } catch (e) {
+    // pass
+  }
+  return []
 }
 
 export const draw = (
@@ -149,24 +161,24 @@ export const draw = (
       ctx.drawImage(nextImg, x, y, width, height)
     }
   }
-  if (!rainAlpha) {
-    return
-  }
-  ctx.globalAlpha = (rainAlpha / 100) * (intrapolate ? rain.ratio : 1)
-  const rainImg =
-    cache.rain.get(rain.prevTime) || cache.forecast.get(rain.prevTime)
-  if (rainImg) {
-    ctx.drawImage(rainImg, x, y, width, height)
-  }
-  if (intrapolate) {
-    const nextRainImg =
-      cache.rain.get(rain.nextTime) || cache.forecast.get(rain.nextTime)
-    ctx.globalAlpha = (rainAlpha / 100) * (1 - rain.ratio)
-    if (nextRainImg) {
-      ctx.drawImage(nextRainImg, x, y, width, height)
+  if (rainAlpha) {
+    ctx.globalAlpha = (rainAlpha / 100) * (intrapolate ? rain.ratio : 1)
+    const rainImg =
+      cache.rain.get(rain.prevTime) || cache.forecast.get(rain.prevTime)
+    if (rainImg) {
+      ctx.drawImage(rainImg, x, y, width, height)
+    }
+    if (intrapolate) {
+      const nextRainImg =
+        cache.rain.get(rain.nextTime) || cache.forecast.get(rain.nextTime)
+      ctx.globalAlpha = (rainAlpha / 100) * (1 - rain.ratio)
+      if (nextRainImg) {
+        ctx.drawImage(nextRainImg, x, y, width, height)
+      }
     }
   }
-  latlngs.forEach(([lat, lng], i) => {
+  const drawLatLngs = latlngs.length ? latlngs : getLocalLatLng()
+  drawLatLngs.forEach(([lat, lng, local], i) => {
     const cWest = x
     const cNorth = y
     const cEast = x + width
@@ -193,7 +205,7 @@ export const draw = (
     const cy =
       ((yNorth - yLat) / (yNorth - ySouth)) * (cSouth - cNorth) + cNorth
 
-    ctx.globalAlpha = 0.6
+    ctx.globalAlpha = local ? 0.4 : 0.6
     // Draw crosshair
     ctx.fillStyle = ctx.strokeStyle = `hsl(${
       (i * 360) / (latlngs.length + 1)
