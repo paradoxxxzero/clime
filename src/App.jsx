@@ -22,15 +22,17 @@ export default function App() {
   const canvasRef = useRef()
   const locks = useRef({})
   const bounds = useRef()
-  const speed = useRef([0, 0, 0])
 
   const [pastLimit, setPastLimit] = useState(hours)
   const [infos, setInfos] = useState({})
   const [locationAsked, setLocationAsked] = useState(false)
-  const [time, setTime] = useState(() => null)
-  const [map, setMap] = useState({ center: [0, 0], zoom: innerHeight / 2 })
+  const [map, setMap] = useState({
+    center: [0, 0],
+    zoom: innerHeight / 2,
+    time: null,
+  })
+  const speed = useRef({ center: [0, 0], zoom: 0, time: 0, now: 0 })
   const [loading, setLoading] = useState(0)
-  const [scrollTime, setScrollTime] = useState(true)
   const [intrapolate, setIntrapolate] = useState(true)
   const [rainAlpha, setRainAlpha] = useState(50)
   useEffect(() => {
@@ -45,7 +47,11 @@ export default function App() {
         .concat([...cache.current.cloud.keys()])
       const [min, max] = [Math.min(...ts), Math.max(...ts)]
       bounds.current = [min, max]
-      setTime(time => (time ? Math.min(max, Math.max(min, time)) : time))
+      setMap(({ center, zoom, time }) => ({
+        center,
+        zoom,
+        time: time ? Math.min(max, Math.max(min, time)) : time,
+      }))
     }
     let timeout = null
     if (!loading) {
@@ -60,7 +66,7 @@ export default function App() {
         clearTimeout(timeout)
       }
     }
-  }, [loading])
+  }, [infos, loading])
 
   useEffect(() => {
     // Cloud images
@@ -188,12 +194,12 @@ export default function App() {
           batch.map(async ({ type, key, url }) => {
             try {
               cache.current[type].set(key, await load(url))
-              setTime(time => {
-                if (!time || Math.abs(time - key) < 5 * 60 * 1000) {
-                  return key
-                }
-                return time
-              })
+              setMap(({ center, zoom, time }) => ({
+                center,
+                zoom,
+                time:
+                  !time || Math.abs(time - key) < 5 * 60 * 1000 ? key : time,
+              }))
             } finally {
               setLoading(loading => loading - 1)
             }
@@ -205,7 +211,7 @@ export default function App() {
       rewindRain()
     }
 
-    setTime(time => {
+    setMap(({ center, zoom, time }) => {
       toload.sort(
         (a, b) => Math.abs(time - a.timestamp) - Math.abs(time - b.timestamp)
       )
@@ -213,12 +219,12 @@ export default function App() {
       if (toload.length > 0) {
         loadall()
       }
-      return time
+      return { center, zoom, time }
     })
   }, [infos, pastLimit])
 
   const rescale = useCallback((delta, x, y) => {
-    setMap(({ center, zoom }) => {
+    setMap(({ center, zoom, time }) => {
       const aspect = innerWidth / innerHeight
 
       const dx = -(x - innerWidth / 2 - center[0]) / (2 * zoom * aspect)
@@ -231,21 +237,30 @@ export default function App() {
           center[0] - dx * zoom * delta * 2 * aspect,
           center[1] - dy * zoom * delta * 2,
         ],
+        time,
       }
     })
   }, [])
 
   useEffect(() => {
     const pointers = new Map()
-    let pinch = null
     let distance = null
+    const history = []
+
     const down = e => {
       document.body.style.cursor = 'grabbing'
       if (e.button !== 0) {
         return
       }
+      if (pointers.size === 0) {
+        history.length = 0
+        speed.center = [0, 0]
+        speed.zoom = 0
+        speed.time = 0
+        speed.now = 0
+      }
 
-      pointers.set(e.pointerId, [e.clientX, e.clientY, performance.now()])
+      pointers.set(e.pointerId, [e.clientX, e.clientY])
       e.preventDefault()
     }
 
@@ -253,25 +268,28 @@ export default function App() {
       if (!pointers.has(e.pointerId)) {
         return
       }
-      const cursor = pointers.get(e.pointerId)
 
-      const x = (cursor[0] - e.clientX) * devicePixelRatio
-      const y = (cursor[1] - e.clientY) * devicePixelRatio
-      const t = performance.now()
-      speed.current = [
-        (speed.current[0] + (1000 * x) / t) / 2,
-        (speed.current[1] + (1000 * y) / t) / 2,
-        t,
-      ]
-      pointers.set(e.pointerId, [e.clientX, e.clientY, t])
+      const cursor = pointers.get(e.pointerId)
+      const dx = ((cursor[0] - e.clientX) * devicePixelRatio) / pointers.size
+      const dy = ((cursor[1] - e.clientY) * devicePixelRatio) / pointers.size
+      pointers.set(e.pointerId, [e.clientX, e.clientY])
+
+      let t = 0,
+        x = 0,
+        y = 0
+
+      const timeMode = !e.shiftKey && pointers.size === 1
+      if (timeMode) {
+        t = dx
+      } else {
+        x = dx
+        y = dy
+      }
 
       if (pointers.size > 1) {
         const vals = pointers.values()
         const p1 = vals.next().value
         const p2 = vals.next().value
-        if (pinch === null) {
-          pinch = [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2]
-        }
 
         const newDistance = Math.hypot(p1[0] - p2[0], p1[1] - p2[1])
         if (distance === null) {
@@ -281,26 +299,47 @@ export default function App() {
 
         const deltaDistance = (newDistance - distance) / innerWidth
         distance = newDistance
-        rescale((-deltaDistance * 4) / devicePixelRatio, pinch[0], pinch[1])
-        return
+        rescale(
+          (-deltaDistance * 4) / devicePixelRatio,
+          (p1[0] + p2[0]) / 2,
+          (p1[1] + p2[1]) / 2
+        )
       }
-      if (scrollTime) {
-        if (bounds.current) {
-          const [min, max] = bounds.current
-          setTime(time => Math.min(max, Math.max(min, time - x * 15 * 1000)))
-        }
-      } else {
-        setMap(({ center, zoom }) => ({
+      setMap(({ center, zoom, time }) => {
+        const rv = {
           zoom,
           center: [center[0] - x, center[1] - y],
-        }))
-      }
+          time:
+            time && bounds.current
+              ? Math.min(
+                  bounds.current[1],
+                  Math.max(bounds.current[0], time - t * 15 * 1000)
+                )
+              : time,
+        }
+        history.push([performance.now(), rv])
+        if (history.length > 50) {
+          history.shift()
+        }
+        return rv
+      })
     }
     const up = () => {
       document.body.style.cursor = 'default'
       pointers.clear()
       distance = null
-      pinch = null
+      if (history.length > 5) {
+        const [t, map] = history[history.length - 1]
+        const [t0, map0] = history[0]
+        const dt = t - t0
+        speed.current.center = [
+          (map.center[0] - map0.center[0]) / dt,
+          (map.center[1] - map0.center[1]) / dt,
+        ]
+        speed.current.zoom = (map.zoom - map0.zoom) / dt
+        speed.current.time = (map.time - map0.time) / dt
+      }
+      history.length = 0
     }
 
     window.addEventListener('pointerdown', down)
@@ -311,7 +350,7 @@ export default function App() {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
     }
-  }, [scrollTime, rescale])
+  }, [rescale])
 
   useEffect(() => {
     if (locationAsked) {
@@ -327,7 +366,7 @@ export default function App() {
           )
           latlngs.push([coords.latitude, coords.longitude])
           const canvas = canvasRef.current
-          draw(cache.current, time, canvas, map, intrapolate, rainAlpha)
+          draw(cache.current, canvas, map, intrapolate, rainAlpha)
         },
         error => {
           alert('Could not get your location, ' + error.message)
@@ -342,39 +381,32 @@ export default function App() {
     return () => {
       window.removeEventListener('click', click)
     }
-  }, [time, map, intrapolate, rainAlpha, locationAsked])
+  }, [map, intrapolate, rainAlpha, locationAsked])
 
   useEffect(() => {
     const animate = () => {
+      const damp = 0.9
+      speed.current.center[0] *= damp
+      speed.current.center[1] *= damp
+      speed.current.zoom *= damp
+      speed.current.time *= damp
+
       const now = performance.now()
-      const dt = now - (speed.current[2] || now)
-      speed.current[2] = now
-      const [x, y] = speed.current
-      if (Math.abs(x) < 0.001 && Math.abs(y) < 0.001) {
-        return
-      }
-      speed.current[0] *= 0.98
-      speed.current[1] *= 0.98
-      if (scrollTime) {
-        if (bounds.current) {
-          const [min, max] = bounds.current
-          setTime(time =>
-            time
-              ? Math.min(max, Math.max(min, time - x * dt * 15 * 1000))
-              : time
-          )
-        }
-      } else {
-        setMap(({ center, zoom }) => ({
-          zoom,
-          center: [center[0] - x * dt, center[1] - y * dt],
-        }))
-      }
+      const dt = now - (speed.current.now || now)
+      speed.current.now = now
+      setMap(({ center, zoom, time }) => ({
+        center: [
+          center[0] + speed.current.center[0] * dt,
+          center[1] + speed.current.center[1] * dt,
+        ],
+        zoom: zoom + speed.current.zoom * dt,
+        time: time + speed.current.time * dt,
+      }))
       id = requestAnimationFrame(animate)
     }
     let id = requestAnimationFrame(animate)
     return () => cancelAnimationFrame(id)
-  }, [scrollTime, time, map])
+  }, [])
 
   useEffect(() => {
     const wheel = e => {
@@ -391,11 +423,11 @@ export default function App() {
       const entry = entries.find(entry => entry.target === canvas)
       canvas.width = entry.devicePixelContentBoxSize[0].inlineSize
       canvas.height = entry.devicePixelContentBoxSize[0].blockSize
-      draw(cache.current, time, canvas, map, intrapolate, rainAlpha)
+      draw(cache.current, canvas, map, intrapolate, rainAlpha)
     })
     observer.observe(canvas, { box: ['device-pixel-content-box'] })
     return () => observer.disconnect()
-  }, [time, map, intrapolate, rainAlpha])
+  }, [map, intrapolate, rainAlpha])
 
   return (
     <main>
@@ -404,9 +436,6 @@ export default function App() {
         <div className="control">
           <button className="button" onClick={() => setPastLimit(h => h + 1)}>
             «
-          </button>
-          <button className="button" onClick={() => setScrollTime(s => !s)}>
-            {scrollTime ? 'T' : 'X'}
           </button>
           <button className="button" onClick={() => setIntrapolate(i => !i)}>
             {intrapolate ? 'I' : 'P'}
@@ -419,7 +448,7 @@ export default function App() {
           </button>
         </div>
         <div className="current-time">
-          {time && new Date(time).toLocaleString()}
+          {map.time && new Date(map.time).toLocaleString()}
         </div>
         <div className="loading">{loading > 0 ? `${loading}…` : ''}</div>
       </aside>

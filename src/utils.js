@@ -86,8 +86,8 @@ const getPrevNextRatio = (keys, time) => {
     time > nextTime
       ? 0
       : time < prevTime
-        ? 1
-        : (nextTime - time) / (nextTime - prevTime)
+      ? 1
+      : (nextTime - time) / (nextTime - prevTime)
 
   return { prevTime, nextTime, ratio }
 }
@@ -115,9 +115,8 @@ const getLocalLatLng = () => {
 
 export const draw = (
   cache,
-  time,
   canvas,
-  { center, zoom },
+  { center, zoom, time },
   intrapolate,
   rainAlpha
 ) => {
