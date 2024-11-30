@@ -190,7 +190,7 @@ export default function App() {
       setLoading(loading => loading + toload.length)
       const batches = group(toload, 5)
       for (const batch of batches) {
-        await Promise.all(
+        await Promise.allSettled(
           batch.map(async ({ type, key, url }) => {
             try {
               cache.current[type].set(key, await load(url))
