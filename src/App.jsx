@@ -325,7 +325,7 @@ export default function App() {
               : time,
         }
         history.push([performance.now(), rv])
-        if (history.length > 50) {
+        if (history.length > 20) {
           history.shift()
         }
         return rv
@@ -335,7 +335,7 @@ export default function App() {
       document.body.style.cursor = 'default'
       pointers.clear()
       distance = null
-      if (history.length > 5) {
+      if (history.length > 2) {
         const [t, map] = history[history.length - 1]
         const [t0, map0] = history[0]
         const dt = t - t0
@@ -392,11 +392,11 @@ export default function App() {
 
   useEffect(() => {
     const animate = () => {
-      const damp = 0.9
+      const damp = 0.92
       speed.current.center[0] *= damp
       speed.current.center[1] *= damp
       speed.current.zoom *= damp
-      speed.current.time *= damp
+      speed.current.time *= damp + 0.03
 
       const now = performance.now()
       const dt = now - (speed.current.now || now)
