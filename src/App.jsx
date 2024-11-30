@@ -71,15 +71,25 @@ export default function App() {
   useEffect(() => {
     // Cloud images
     const toload = []
-    infos['satellite-europe']?.layers?.forEach(({ layername, timestamp }) => {
-      if (!cache.current.cloud.has(timestamp)) {
-        toload.push({
-          type: 'cloud',
-          key: timestamp * 1000,
-          url: cloudUrl(layername),
-        })
-      }
-    })
+    infos['satellite-europe']?.layers
+      ?.reverse()
+      .forEach(({ layername, timestamp }) => {
+        if (!cache.current.cloud.has(timestamp)) {
+          toload.push({
+            type: 'cloud',
+            key: timestamp * 1000,
+            url: cloudUrl(layername),
+          })
+        }
+        // Also try loading non forecast images
+        if (!cache.current.rain.has(timestamp)) {
+          toload.push({
+            type: 'rain',
+            key: timestamp * 1000,
+            url: rainUrl(layername),
+          })
+        }
+      })
 
     // Rain images
     infos['radar-world']?.layers?.forEach(({ layername, timestamp, type }) => {
@@ -128,38 +138,35 @@ export default function App() {
         return
       }
       locks.current.rewindRain = true
-      let keys = [...cache.current.rain.keys()].sort()
       let time
+      let keys = [...cache.current.forecast.keys()].sort()
       if (keys.length === 0) {
-        keys = [...cache.current.forecast.keys()].sort()
-        if (keys.length === 0) {
-          return
-        }
-        const runtime = infos['radar-world'].runtimes[0] * 1000
-        time = keys[0]
+        return
+      }
+      const runtime = infos['radar-world'].runtimes[0] * 1000
+      time = keys[0]
 
-        while (time > new Date().getTime() - pastLimit * 60 * 60 * 1000) {
-          time -= 5 * 60 * 1000
-          if (!cache.current.rain.has(time)) {
-            setLoading(loading => loading + 1)
-            try {
-              cache.current.rain.set(
-                time,
-                await load(
-                  rainUrl(
-                    forecastFormat(
-                      new Date(runtime),
-                      (time - runtime) / (60 * 1000)
-                    )
+      while (time > new Date().getTime() - pastLimit * 60 * 60 * 1000) {
+        time -= 5 * 60 * 1000
+        if (!cache.current.rain.has(time)) {
+          setLoading(loading => loading + 1)
+          try {
+            cache.current.rain.set(
+              time,
+              await load(
+                rainUrl(
+                  forecastFormat(
+                    new Date(runtime),
+                    (time - runtime) / (60 * 1000)
                   )
                 )
               )
-              bounds.current[0] = Math.min(bounds.current[0], time)
-            } catch (e) {
-              break
-            } finally {
-              setLoading(loading => loading - 1)
-            }
+            )
+            bounds.current[0] = Math.min(bounds.current[0], time)
+          } catch (e) {
+            break
+          } finally {
+            setLoading(loading => loading - 1)
           }
         }
       }

@@ -165,15 +165,26 @@ export const draw = (
     const rainImg =
       cache.rain.get(rain.prevTime) || cache.forecast.get(rain.prevTime)
     if (rainImg) {
+      const forecast = !cache.rain.get(rain.prevTime)
+      if (forecast) {
+        ctx.filter = 'hue-rotate(90deg)'
+      }
       ctx.drawImage(rainImg, x, y, width, height)
+      ctx.filter = 'none'
     }
     if (intrapolate) {
       const nextRainImg =
         cache.rain.get(rain.nextTime) || cache.forecast.get(rain.nextTime)
-      ctx.globalAlpha = (rainAlpha / 100) * (1 - rain.ratio)
+
       if (nextRainImg) {
+        const forecast = !cache.rain.get(rain.prevTime)
+        if (forecast) {
+          ctx.filter = 'hue-rotate(90deg)'
+        }
+        ctx.globalAlpha = (rainAlpha / 100) * (1 - rain.ratio)
         ctx.drawImage(nextRainImg, x, y, width, height)
       }
+      ctx.filter = 'none'
     }
   }
   const drawLatLngs = latlngs.length ? latlngs : getLocalLatLng()
