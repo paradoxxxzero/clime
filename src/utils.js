@@ -1,7 +1,7 @@
 import { latlngs } from './main'
 
 const baseUrl = 'https://imn-rust-lb.infoplaza.io/v4/nowcast/tiles/'
-const target = '7/41/59/50/70'
+const target = '7/41/59/49/70'
 const endpoints = ['radar-world', 'satellite-europe']
 
 export const getInfos = async () => {
@@ -41,8 +41,10 @@ export const forecastFormat = (date, offset) =>
     2
   )}${offset >= 0 ? '+' : '-'}${pad(Math.abs(offset), 3)}`
 
-export const cloudUrl = frame =>
-  `${baseUrl}satellite-europe/${frame}/${target}?outputtype=jpeg`
+export const cloudUrl = (frame, type) =>
+  `${baseUrl}${
+    type === 'micro' ? 'satellite-europe-nightmicrophysics' : 'satellite-europe'
+  }/${frame}/${target}?outputtype=jpeg`
 
 export const rainUrl = frame =>
   `${baseUrl}radar-world/${frame}/${target}?outputtype=image&unit=mm/hr`
@@ -126,21 +128,23 @@ export const draw = (
   canvas,
   { center, zoom, time },
   intrapolate,
-  rainAlpha
+  rainAlpha,
+  microphysics
 ) => {
   const ctx = canvas.getContext('2d')
+  const type = microphysics ? 'micro' : 'cloud'
 
   // Find in cache.cloud the closest previous and next images
-  if (cache.cloud.size < 2) {
+  if (cache[type].size < 2) {
     return
   }
-  const cloud = getPrevNextRatio([...cache.cloud.keys()], time)
+  const cloud = getPrevNextRatio([...cache[type].keys()], time)
   const rain = getPrevNextRatio(
     [...cache.rain.keys(), ...cache.forecast.keys()],
     time
   )
 
-  const img = cache.cloud.get(cloud.prevTime)
+  const img = cache[type].get(cloud.prevTime)
 
   ctx.globalAlpha = 1
 
@@ -163,7 +167,7 @@ export const draw = (
 
   if (intrapolate) {
     ctx.globalAlpha = 1 - cloud.ratio
-    const nextImg = cache.cloud.get(cloud.nextTime)
+    const nextImg = cache[type].get(cloud.nextTime)
     if (nextImg) {
       ctx.drawImage(nextImg, x, y, width, height)
     }

@@ -16,6 +16,7 @@ import { hours, latlngs } from './main'
 export default function App() {
   const cache = useRef({
     cloud: new Map(),
+    micro: new Map(),
     rain: new Map(),
     forecast: new Map(),
   })
@@ -24,6 +25,7 @@ export default function App() {
   const bounds = useRef()
 
   const [pastLimit, setPastLimit] = useState(hours)
+  const [microphysics, setMicrophysics] = useState(false)
   const [infos, setInfos] = useState({})
   const [locationAsked, setLocationAsked] = useState(false)
   const [map, setMap] = useState({
@@ -70,15 +72,16 @@ export default function App() {
 
   useEffect(() => {
     // Cloud images
+    const type = microphysics ? 'micro' : 'cloud'
     const toload = []
     infos['satellite-europe']?.layers
       ?.reverse()
       .forEach(({ layername, timestamp }) => {
-        if (!cache.current.cloud.has(timestamp)) {
+        if (!cache.current[type].has(timestamp)) {
           toload.push({
-            type: 'cloud',
+            type,
             key: timestamp * 1000,
-            url: cloudUrl(layername),
+            url: cloudUrl(layername, type),
           })
         }
         // Also try loading non forecast images
@@ -107,7 +110,7 @@ export default function App() {
         return
       }
       locks.current.rewindCloud = true
-      const keys = [...cache.current.cloud.keys()].sort()
+      const keys = [...cache.current[type].keys()].sort()
       if (keys.length === 0) {
         return
       }
@@ -115,11 +118,11 @@ export default function App() {
       while (time > new Date().getTime() - pastLimit * 60 * 60 * 1000) {
         time -= 5 * 60 * 1000
         setLoading(loading => loading + 1)
-        if (!cache.current.cloud.has(time)) {
+        if (!cache.current[type].has(time)) {
           try {
-            cache.current.cloud.set(
+            cache.current[type].set(
               time,
-              await load(cloudUrl(cloudFormat(new Date(time))))
+              await load(cloudUrl(cloudFormat(new Date(time)), type))
             )
             bounds.current[0] = Math.min(bounds.current[0], time)
           } catch (e) {
@@ -228,7 +231,7 @@ export default function App() {
       }
       return { center, zoom, time }
     })
-  }, [infos, pastLimit])
+  }, [infos, pastLimit, microphysics])
 
   const rescale = useCallback((delta, x, y) => {
     setMap(({ center, zoom, time }) => {
@@ -373,7 +376,7 @@ export default function App() {
           )
           latlngs.push([coords.latitude, coords.longitude])
           const canvas = canvasRef.current
-          draw(cache.current, canvas, map, intrapolate, rainAlpha)
+          draw(cache.current, canvas, map, intrapolate, rainAlpha, microphysics)
         },
         error => {
           alert('Could not get your location, ' + error.message)
@@ -388,7 +391,7 @@ export default function App() {
     return () => {
       window.removeEventListener('click', click)
     }
-  }, [map, intrapolate, rainAlpha, locationAsked])
+  }, [map, intrapolate, rainAlpha, locationAsked, microphysics])
 
   useEffect(() => {
     const animate = () => {
@@ -430,11 +433,11 @@ export default function App() {
       const entry = entries.find(entry => entry.target === canvas)
       canvas.width = entry.devicePixelContentBoxSize[0].inlineSize
       canvas.height = entry.devicePixelContentBoxSize[0].blockSize
-      draw(cache.current, canvas, map, intrapolate, rainAlpha)
+      draw(cache.current, canvas, map, intrapolate, rainAlpha, microphysics)
     })
     observer.observe(canvas, { box: ['device-pixel-content-box'] })
     return () => observer.disconnect()
-  }, [map, intrapolate, rainAlpha])
+  }, [map, intrapolate, rainAlpha, microphysics])
 
   return (
     <main>
@@ -443,6 +446,9 @@ export default function App() {
         <div className="control">
           <button className="button" onClick={() => setPastLimit(h => h + 1)}>
             «
+          </button>
+          <button className="button" onClick={() => setMicrophysics(m => !m)}>
+            {microphysics ? 'φ' : 'μ'}
           </button>
           <button className="button" onClick={() => setIntrapolate(i => !i)}>
             {intrapolate ? 'I' : 'P'}
