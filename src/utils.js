@@ -1,9 +1,17 @@
 import { latlngs } from './main'
 
+const baseUrl = 'https://imn-rust-lb.infoplaza.io/v4/nowcast/tiles/'
+const target = '7/41/59/50/70'
+const endpoints = ['radar-world', 'satellite-europe']
+
 export const getInfos = async () => {
-  const res = await fetch('https://imn-api.meteoplaza.com/v4/nowcast/tiles/')
-  const data = await res.json()
-  return data
+  const res = await Promise.all(
+    endpoints.map(endpoint =>
+      fetch(`${baseUrl}${endpoint}/observations/${target}`)
+    )
+  )
+  const data = await Promise.all(res.map(res => res.json()))
+  return Object.fromEntries(data.map((d, i) => [endpoints[i], d]))
 }
 
 function pad(num, size) {
@@ -34,10 +42,10 @@ export const forecastFormat = (date, offset) =>
   )}${offset >= 0 ? '+' : '-'}${pad(Math.abs(offset), 3)}`
 
 export const cloudUrl = frame =>
-  `https://imn-api.meteoplaza.com/v4/nowcast/tiles/satellite-europe/${frame}/7/41/59/50/70?outputtype=jpeg`
+  `${baseUrl}satellite-europe/${frame}/${target}?outputtype=jpeg`
 
 export const rainUrl = frame =>
-  `https://imn-api.meteoplaza.com/v4/nowcast/tiles/radar-world/${frame}/7/41/59/50/70?outputtype=image&unit=mm/hr`
+  `${baseUrl}radar-world/${frame}/${target}?outputtype=image&unit=mm/hr`
 
 export const load = async url => {
   const image = new Image()
